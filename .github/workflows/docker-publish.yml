@@ -1,0 +1,87 @@
+# Purpose: Upon pushing to main branch, create a docker image and store it in
+# the repos' packages
+name: Create Docker Image
+
+# Specify the actions that trigger the workflow.
+# For our purposes, this will be when we push to the main branch OR when a release
+# has a semantic tag
+on:
+  push:
+    branches: [ "main" ]
+    # Publish semver tags as releases.
+    tags: [ 'v*.*.*' ]
+
+# Specify some environment variables we will be using in the workflow
+env:
+  # Registry to store container images. Uses docker.io for Docker Hub if empty.
+  # We are using Github's package repositry
+  REGISTRY: ghcr.io
+  # We must name our image and we will use the github repository as the name
+  # github.repository as <account>/<repo>
+  IMAGE_NAME: ${{ github.repository }}
+
+# Jobs are the actions to execute. Our Docker workflow only has one: build the image
+jobs:
+  # The building job
+  build:
+
+    # This job will be run on an ubunut server and it will need to read contents of
+    # our repositry and write to the packages.
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    # Now we can specify the steps to execute
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      # Check for what files have changed
+      # https://github.com/marketplace/actions/changed-files
+      - name: Get changed files
+        id: changed-files
+        uses: tj-actions/changed-files@v35
+
+      # Workaround: https://github.com/docker/build-push-action/issues/461
+      # Code originates from github's demo
+      - name: Setup Docker buildx
+        # Only run if the lock file or Dockerfile has changed which means the container needs re-built
+        if: contains(steps.changed-files.outputs.modified_files, 'renv.lock') || contains(steps.changed-files.outputs.modified_files, 'Docker')
+        uses: docker/setup-buildx-action@79abd3f86f79a9d68a23c75a09a9a85889262adf
+
+      # Login to the specified container image regsitry.
+      # For source, see: https://github.com/docker/login-action
+      - name: Log into registry ${{ env.REGISTRY }}
+        # Only run if the lock file or Dockerfile has changed which means the container needs re-built
+        if: contains(steps.changed-files.outputs.modified_files, 'renv.lock') || contains(steps.changed-files.outputs.modified_files, 'Docker')
+        uses: docker/login-action@28218f9b04b4f3f62068d7b6ce6ca5b26e35336c
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Extract metadata (tags, labels) that will be used for tagging our image
+      # For source, see: https://github.com/docker/metadata-action
+      - name: Extract Docker metadata
+        # Only run if the lock file or Dockerfile has changed which means the container needs re-built
+        if: contains(steps.changed-files.outputs.modified_files, 'renv.lock') || contains(steps.changed-files.outputs.modified_files, 'Docker')
+        id: meta
+        uses: docker/metadata-action@98669ae865ea3cffbcbaa878cf57c20bbf1c6c38
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+
+      # Now we can actually build and push the Docker image using Buildx
+      # For source, See: https://github.com/docker/build-push-action
+      - name: Build and push Docker image
+        # Only run if the lock file or Dockerfile has changed which means the container needs re-built
+        if: contains(steps.changed-files.outputs.modified_files, 'renv.lock') || contains(steps.changed-files.outputs.modified_files, 'Docker')
+        id: build-and-push
+        uses: docker/build-push-action@ac9327eae2b366085ac7f6a2d02df8aa8ead720a
+        with:
+          context: .
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
