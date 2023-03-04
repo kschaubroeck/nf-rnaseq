@@ -9,6 +9,7 @@ ENV RENV_VERSION 0.16.0
 RUN --mount=type=cache,target=/var/cache/apt \
     apt-get update && \
     apt-get install -y --no-install-recommends "$@" \
+    procps \
     libxml2-dev \
     libcairo2-dev \
     libgit2-dev \
@@ -43,12 +44,6 @@ ENV RENV_PATHS_LIBRARY renv/library
 RUN R -e 'renv::restore()' && \
     rm -rf /tmp/downloaded_packages && \
     strip /usr/local/lib/R/site-library/*/libs/*.so
-
-# Install nextflow package
-RUN --mount=type=cache,target=/var/cache/apt \
-    apt-get install -y --no-install-recommends "$@" \
-    procps && \
-    rm -rf /var/lib/apt/lists/*
 
 # Set the working directory for the project
 WORKDIR /home/rstudio
