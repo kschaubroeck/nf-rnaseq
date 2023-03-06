@@ -464,6 +464,79 @@ assay(gse, "infRep0") <- NULL
 # Now compute uncertainty
 gse <- computeInfRV(gse)
 
+# Library format summary ---------------------------
+message("Calculating transcript counts for differential transcript usage (DTU)")
+
+# Fetch a new SE
+se_dtu <- tximeta(coldata)
+assay(se_dtu, "infRep0") <- assay(se_dtu, "counts")
+
+# Length mean for each transcript
+# Find the mean legnth of each transcript using all samples
+length_geomean <- exp(rowMeans(log(assay(se_dtu, "length"))))
+
+# DTU corrected median lengths, grouped by gene
+# Group each transcript by gene and find the median length
+median_length_geomean <-
+  length_geomean |> enframe(name = "transcript_id", value = "length") |>
+  dplyr::left_join(transcript_annotation |> dplyr::select(gene_id, transcript_id)) |>
+  dplyr::mutate(transcript_id, length = median(length), .by = gene_id) |>
+  dplyr::select(-gene_id) |>
+  deframe()
+
+# Actually correction phase. 
+# 1) Scale the counts using fishpond
+# 2) Find the correction factor produce by fishpond
+# 3) Determine TPM using the original counts
+# 4) Scale the TPM to counts using the correction factor and median lengths
+assays(se_dtu) <-
+  pmap(
+    list(
+      scaleInfReps(se_dtu, minCount = min_count, minN = min_n) |> assays(),
+      assays(se_dtu),
+      assayNames(se_dtu)
+    ),
+    function(scaledCounts, originalCounts, repName) {
+
+      # Only operate on infreps
+      if (str_detect(repName, "infRep") == FALSE) { return(scaledCounts) }
+
+      # Calculate TPM from the scaled counts
+      # scaledTPM <- (scaledCounts / length_geomean)
+      # scaledAbundance <- 1e6 * t(t(scaledTPM) / colSums(scaledTPM))
+
+      # Fetch size factors
+      # libSize <- exp(mean(log( colSums(originalCounts)  )))
+      # sf <- libSize / colSums(scaledCounts)
+
+      # Fetch shared library size, corrected for by size factor
+      library_size_correction <- colSums(scaledCounts)
+
+      # convert the fragmentation rate based on our median values
+      length_corrected_counts <- originalCounts / assay(se_dtu, "length")
+      abundance <- t(t(length_corrected_counts) / colSums(length_corrected_counts))
+
+      # TPM (abundance) to counts using the median lengths
+      effective_fragmentation <- abundance * median_length_geomean
+      t(t(effective_fragmentation) * (library_size_correction / colSums(effective_fragmentation)))
+    }
+  )
+
+# Save the length
+assay(se_dtu, "length") <- 
+  matrix(
+    rep(median_length_geomean, ncol(assay(se_dtu, "length"))),
+    ncol = ncol(assay(se_dtu, "length")), 
+    dimnames = dimnames(assay(se_dtu, "length"))
+  )
+
+# Save the coutns
+assay(se_dtu, "dtuScaledTPMCounts") <- assay(se_dtu, "infRep0")
+assay(se_dtu, "infRep0") <- NULL
+
+# Now compute uncertainty
+se_dtu <- computeInfRV(se_dtu)
+
 # Save all the counts ---------------------------
 message("Saving counts from all experiments")
 
@@ -478,18 +551,22 @@ save_se_assay <- function(se, assay, .rownames, .file) {
 # Save the original point estimates as csv files
 save_se_assay(se, "scaledTPMCounts", .rownames = "transcript_id", file = "transcript/scaled-counts.csv")
 save_se_assay(gse, "scaledTPMCounts", .rownames = "gene_id", file = "gene/scaled-counts.csv")
+save_se_assay(se_dtu, "dtuScaledTPMCounts", .rownames = "transcript_id", file = "dtu/scaled-counts.csv")
 
 # Length files
 save_se_assay(se, "length", .rownames = "transcript_id", file = "transcript/effective-lengths.csv.gz")
 save_se_assay(gse, "length", .rownames = "gene_id", file = "gene/effective-lengths.csv.gz")
+save_se_assay(se_dtu, "length", .rownames = "transcript_id", file = "dtu/effective-lengths.csv.gz")
 
 # mean estimates
 save_se_assay(se, "mean", .rownames = "transcript_id", file = "transcript/infreps-mean.csv.gz")
 save_se_assay(gse, "mean", .rownames = "gene_id", file = "gene/infreps-mean.csv.gz")
+save_se_assay(se_dtu, "mean", .rownames = "transcript_id", file = "dtu/infreps-mean.csv.gz")
 
 # variance estimates
 save_se_assay(se, "variance", .rownames = "transcript_id", file = "transcript/infreps-relative-variance.csv.gz")
 save_se_assay(gse, "variance", .rownames = "gene_id", file = "gene/infreps-relative-variance.csv.gz")
+save_se_assay(se_dtu, "variance", .rownames = "transcript_id", file = "dtu/infreps-relative-variance.csv.gz")
 
 # Save the scaled infReps as an RDS file
 save_se_infreps <- function(se, .rownames, .file) {
@@ -503,3 +580,4 @@ save_se_infreps <- function(se, .rownames, .file) {
 
 save_se_infreps(se, .rownames = "transcript_id", .file = "transcript/infreps.rds")
 save_se_infreps(gse, .rownames = "gene_id", .file = "gene/infreps.rds")
+save_se_infreps(se_dtu, .rownames = "transcript_id", .file = "dtu/infreps.rds")
