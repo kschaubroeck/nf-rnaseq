@@ -199,24 +199,6 @@ se <- computeInfRV(se)
 db <- retrieveDb(se)
 txomeInfo <- metadata(se)$txomeInfo
 
-# Don't forget to clean up the names! Replace spaces with underscores, and make
-# it all lowercase. Finally, sanitize the name to remove anything bad.
-dbfile <-
-  str_c(
-    txomeInfo$source, txomeInfo$organism, txomeInfo$genome, txomeInfo$release, "sqlite",
-    sep = "."
-  ) |>
-  str_replace_all("\\s+", "_") |>
-  str_to_lower()
-  fs::path_sanitize()
-
-# Finally save a copy using the sqlite extension
-message("Saving transcript database")
-AnnotationDbi::saveDb(db, file = dbfile)
-
-# Build transcript annotation ---------------------------
-message("Building transcript annotation")
-
 # Get the genome build for naming purposes
 genome_build <-
   rtracklayer::ucscGenomes(TRUE) |>
@@ -230,6 +212,24 @@ genome_build <-
 if (length(genome_build) != 1) {
   genome_build <- metadata(se)$txomeInfo$genome |> str_replace_all("\\s+", "_") |> str_to_lower()
 }
+
+# Don't forget to clean up the names! Replace spaces with underscores, and make
+# it all lowercase. Finally, sanitize the name to remove anything bad.
+dbfile <-
+  str_c(
+    txomeInfo$source, txomeInfo$organism, genome_build, str_c("v", txomeInfo$release), "sqlite",
+    sep = "."
+  ) |>
+  str_replace_all("\\s+", "_") |>
+  str_to_lower() |>
+  fs::path_sanitize()
+
+# Finally save a copy using the sqlite extension
+message("Saving transcript database")
+AnnotationDbi::saveDb(db, file = dbfile)
+
+# Build transcript annotation ---------------------------
+message("Building transcript annotation")
 
 # Strings to name start and end columns
 feature_start_genome = str_c("feature_start_", genome_build)
@@ -370,15 +370,15 @@ quant_info <-
   )
 
 # Library format summary ---------------------------
-message("Gathering quantification results")
+message("Gathering library format summary")
 
 lib_format_counts <-
   file.path(dirname(sample_paths), "lib_format_counts.json") |>
   set_names(samples) |>
   map(jsonlite::read_json) |>
   map(as_tibble) |>
-  map2(samples, function(x, name) x |> dplyr::mutate(sample_id = name)) |>
-  reduce(dplyr::full_join) |>
+  map2(samples, function(x, name) x |> as_tibble() |> dplyr::mutate(sample_id = name)) |>
+  purrr::reduce(dplyr::full_join) |>
   dplyr::relocate(sample_id) |>
   dplyr::select(
     -read_files,
@@ -403,11 +403,13 @@ read_mapping_ambiguity <-
     ambig_df <- readr::read_tsv(path, progress = FALSE, show_col_types = FALSE)
 
     # Read from the first row the names of transcripts
-    names <- readr::read_tsv(quant_file, col_select = "Name", progress = FALSE, show_col_types = FALSE)
+    names <-
+      readr::read_tsv(quant_file, col_select = "Name", progress = FALSE, show_col_types = FALSE) |>
+      dplyr::pull(Name)
 
     # Quality check before merging and returning
     stopifnot(nrow(names) == nrow(ambig_df))
-    ambig_df |> dplyr::mutate(transcript_id = names)
+    return(ambig_df |> dplyr::mutate(transcript_id = names))
   })
 
 # Find the number of mapped reads that were uniquely assigned to a transcript
@@ -421,7 +423,7 @@ uniquely_mapping_reads <-
       df |> dplyr::select(transcript_id, UniqueCount) |> dplyr::rename({{ sample }} := UniqueCount)
     }
   ) |>
-  reduce(dplyr::full_join)
+  purrr::reduce(dplyr::full_join)
 
 # Find the number of reads that were assigned to multiple transcripts
 message("...for ambiguously mapping reads")
@@ -434,7 +436,7 @@ ambiguously_mapping_reads <-
       df |> dplyr::select(transcript_id, AmbigCount) |> dplyr::rename({{ sample }} := AmbigCount)
     }
   ) |>
-  reduce(dplyr::full_join)
+  purrr::reduce(dplyr::full_join)
 
 # Save quant summaries ---------------------------
 message("Saving summaries")
@@ -468,7 +470,7 @@ gse <- computeInfRV(gse)
 message("Calculating transcript counts for differential transcript usage (DTU)")
 
 # Fetch a new SE
-se_dtu <- tximeta(coldata)
+se_dtu <- tximeta(samples_table)
 assay(se_dtu, "infRep0") <- assay(se_dtu, "counts")
 
 # Length mean for each transcript
@@ -484,7 +486,7 @@ median_length_geomean <-
   dplyr::select(-gene_id) |>
   deframe()
 
-# Actually correction phase. 
+# Actually correction phase.
 # 1) Scale the counts using fishpond
 # 2) Find the correction factor produce by fishpond
 # 3) Determine TPM using the original counts
@@ -523,10 +525,10 @@ assays(se_dtu) <-
   )
 
 # Save the length
-assay(se_dtu, "length") <- 
+assay(se_dtu, "length") <-
   matrix(
     rep(median_length_geomean, ncol(assay(se_dtu, "length"))),
-    ncol = ncol(assay(se_dtu, "length")), 
+    ncol = ncol(assay(se_dtu, "length")),
     dimnames = dimnames(assay(se_dtu, "length"))
   )
 
@@ -544,29 +546,29 @@ message("Saving counts from all experiments")
 save_se_assay <- function(se, assay, .rownames, .file) {
   readr::write_csv(
     assay(se, assay) |> as_tibble(rownames = .rownames),
-    .file = ""
+    file = .file
   )
 }
 
 # Save the original point estimates as csv files
-save_se_assay(se, "scaledTPMCounts", .rownames = "transcript_id", file = "transcript/scaled-counts.csv")
-save_se_assay(gse, "scaledTPMCounts", .rownames = "gene_id", file = "gene/scaled-counts.csv")
-save_se_assay(se_dtu, "dtuScaledTPMCounts", .rownames = "transcript_id", file = "dtu/scaled-counts.csv")
+save_se_assay(se, "scaledTPMCounts", .rownames = "transcript_id", .file = "transcript/scaled-counts.csv")
+save_se_assay(gse, "scaledTPMCounts", .rownames = "gene_id", .file = "gene/scaled-counts.csv")
+save_se_assay(se_dtu, "dtuScaledTPMCounts", .rownames = "transcript_id", .file = "dtu/scaled-counts.csv")
 
 # Length files
-save_se_assay(se, "length", .rownames = "transcript_id", file = "transcript/effective-lengths.csv.gz")
-save_se_assay(gse, "length", .rownames = "gene_id", file = "gene/effective-lengths.csv.gz")
-save_se_assay(se_dtu, "length", .rownames = "transcript_id", file = "dtu/effective-lengths.csv.gz")
+save_se_assay(se, "length", .rownames = "transcript_id", .file = "transcript/effective-lengths.csv.gz")
+save_se_assay(gse, "length", .rownames = "gene_id", .file = "gene/effective-lengths.csv.gz")
+save_se_assay(se_dtu, "length", .rownames = "transcript_id", .file = "dtu/effective-lengths.csv.gz")
 
 # mean estimates
-save_se_assay(se, "mean", .rownames = "transcript_id", file = "transcript/infreps-mean.csv.gz")
-save_se_assay(gse, "mean", .rownames = "gene_id", file = "gene/infreps-mean.csv.gz")
-save_se_assay(se_dtu, "mean", .rownames = "transcript_id", file = "dtu/infreps-mean.csv.gz")
+save_se_assay(se, "mean", .rownames = "transcript_id", .file = "transcript/infreps-mean.csv.gz")
+save_se_assay(gse, "mean", .rownames = "gene_id", .file = "gene/infreps-mean.csv.gz")
+save_se_assay(se_dtu, "mean", .rownames = "transcript_id", .file = "dtu/infreps-mean.csv.gz")
 
 # variance estimates
-save_se_assay(se, "variance", .rownames = "transcript_id", file = "transcript/infreps-relative-variance.csv.gz")
-save_se_assay(gse, "variance", .rownames = "gene_id", file = "gene/infreps-relative-variance.csv.gz")
-save_se_assay(se_dtu, "variance", .rownames = "transcript_id", file = "dtu/infreps-relative-variance.csv.gz")
+save_se_assay(se, "variance", .rownames = "transcript_id", .file = "transcript/infreps-relative-variance.csv.gz")
+save_se_assay(gse, "variance", .rownames = "gene_id", .file = "gene/infreps-relative-variance.csv.gz")
+save_se_assay(se_dtu, "variance", .rownames = "transcript_id", .file = "dtu/infreps-relative-variance.csv.gz")
 
 # Save the scaled infReps as an RDS file
 save_se_infreps <- function(se, .rownames, .file) {
