@@ -12,7 +12,73 @@ library(fishpond)
 # Load samples using command line arguments ---------------------------
 args = commandArgs(trailingOnly = TRUE)
 
-# The script accepts three possible variations:
+if (length(args) == 0) {
+  stop("No arguments were passed to the script.", call. = FALSE)
+}
+
+# Setup fishpond filtering for determining size factors
+
+# Fetch each flag's position. If that flag is passed, fetch the pos + 1 item and
+# use that as the value. Remove the items after to clean up the args
+extract_arg <- function(.flag, .default, .args) {
+  # Fetch the position of the flag (if there is one)
+  flag_pos <- which(.args == .flag)
+
+  # Make sure only one item matches at most
+  stopifnot(length(flag_pos) <= 1)
+
+  # IF nothing was passed, return the default
+  if (length(flag_pos) == 0) {
+    return(list(
+      flag = .flag,
+      value = .default,
+      args = .args
+    ))
+  }
+
+  # We have a flag passed. Make sure it isn't at the end (i.e., there is a value after)
+  stopifnot((flag_pos == length(.args)) == FALSE)
+
+  # Now fetch the item
+  param_value <- .args[flag_pos + 1]
+
+  # return the items
+  list(
+    flag = .flag,
+    value = param_value,
+    args = .args[-c(flag_pos, flag_pos + 1)]
+  )
+}
+
+# Extract the min transcript (maybe gene) count
+minCountFlag <- extract_arg("--minCount", NULL, args)
+args = minCountFlag$args
+min_count <- minCountFlag$value
+
+# Extract the min gene count
+minNFlag <- extract_arg("--minN", NULL, args)
+args = minNFlag$args
+min_n <- minNFlag$value
+
+# Extract the min gene count
+minCountGeneFlag <- extract_arg("--minCountGene", NULL, args)
+args = minCountGeneFlag$args
+min_count_gene <- minCountGeneFlag$value
+
+# Extract the min gene number
+minNGeneFlag <- extract_arg("--minNGene", NULL, args)
+args = minNGeneFlag$args
+min_n_gene <- minNGeneFlag$value
+
+# Message user
+message("Inferential replicates will be filtered based on the following criteria:")
+message(paste("counts >=", min_count))
+message(paste("n >=", min_n))
+if (is.null(min_count_gene) == FALSE) message(paste("gene_counts >=", min_count_gene))
+if (is.null(min_n_gene) == FALSE) message(paste("gene_n >=", min_n_gene))
+
+## List of sample and Directories ---------------------------
+# The script accepts four possible variations:
 #    1) samples and the directory to find the samples. This option requires a
 #       sample flag to be passed to the script.
 #    2) Just a single directory. If this option is selected, all folders in the
@@ -20,11 +86,7 @@ args = commandArgs(trailingOnly = TRUE)
 #    3) A list of directories. Similar to option 2, the directory names will be
 #       used as the sample names
 #    4) A list of samples and directories
-if (length(args) == 0) {
-  stop("No arguments were passed to the script.", call. = FALSE)
-}
 
-## List of sample and Directories ---------------------------
 samples_flag_pos <- which(args == "--samples")
 directory_flag_pos <- which(args == "--directory")
 
@@ -124,7 +186,7 @@ se <- tximeta(samples_table)
 # once the scaling is complete. This value will not affect normalization since
 # each replicate is normalized independently of the others.
 assay(se, "infRep0") <- assay(se, "counts")
-se <- scaleInfReps(se, minCount = 0, minN = 0)
+se <- scaleInfReps(se, minCount = min_count, minN = min_n)
 
 assay(se, "scaledTPMCounts") <- assay(se, "infRep0")
 assay(se, "infRep0") <- NULL
@@ -384,11 +446,17 @@ readr::write_csv(ambiguously_mapping_reads, "ambiguous-mappings.csv.gz")
 
 # Summarizing counts to gene ---------------------------
 message("Calculating gene counts")
-gse <- summarizeToGene(se)
+
+# If filtering values aren't set, take the transcript values
+if (is.null(min_count_gene)) min_count_gene <- min_count
+if (is.null(min_n_gene)) min_n_gene <- min_n
+
+# Fetch a new, unfiltered copy
+gse <- summarizeToGene(tximeta(samples_table))
 
 # Same logic as the transcripts is used for the genes
 assay(gse, "infRep0") <- assay(gse, "counts")
-gse <- scaleInfReps(gse, minCount = 0, minN = 0)
+gse <- scaleInfReps(gse, minCount = min_count_gene, minN = min_n_gene)
 
 assay(gse, "scaledTPMCounts") <- assay(gse, "infRep0")
 assay(gse, "infRep0") <- NULL
