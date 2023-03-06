@@ -17,9 +17,9 @@ include { SAMTOOLS_VIEW as SAMTOOLS_VIEW_SALMON_ALIGNMENT } from './modules/samt
 
 /* Subworkflow includes
 ---------------------------------------------------------------------------- */
-include { RNASEQ_PRE_PROCESS } from './subworkflows/rnaseq/pre-process'
-include { SALMON_RNASEQ } from './subworkflows/rnaseq/salmon'
-include { POST_PROCESS_SALMON_RNASEQ } from './subworkflows/rnaseq/post-process'
+include { RNASEQ_PRE_PROCESS } from './subworkflows/pre-process'
+include { SALMON_RNASEQ } from './subworkflows/salmon'
+include { POST_PROCESS_SALMON_RNASEQ } from './subworkflows/post-process'
 
 /* Help and start-up
 ---------------------------------------------------------------------------- */
