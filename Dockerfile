@@ -1,6 +1,10 @@
 # Base Image: Contains R version 4.2.2 and Rstudio Server
 FROM rocker/r-ver:4.2.2
 
+# Label the container
+LABEL org.opencontainers.image.source=https://github.com/kschaubroeck/nf-rnaseq
+LABEL org.opencontainers.image.description="Container image for workflow tools fishpond and tximeta"
+
 # Use latest version of Renv (version 0.16.0) from Github
 ENV RENV_VERSION 0.16.0
 
