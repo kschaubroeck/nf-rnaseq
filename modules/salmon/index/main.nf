@@ -32,7 +32,7 @@ process SALMON_INDEX {
         mv -f $transcriptome_fasta fasta/$transcriptome_fasta
         mv -f $genome_fasta fasta/$genome_fasta
 
-        salmon index --threads $task.cpus --targets fasta/$gentrome -d decoy-names.txt --index salmon-index $args
+        salmon index --threads $task.cpus -t fasta/$gentrome -d decoy-names.txt --index salmon-index $args
         """
 
     stub:
