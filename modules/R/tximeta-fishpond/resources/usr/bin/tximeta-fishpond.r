@@ -12,7 +12,73 @@ library(fishpond)
 # Load samples using command line arguments ---------------------------
 args = commandArgs(trailingOnly = TRUE)
 
-# The script accepts three possible variations:
+if (length(args) == 0) {
+  stop("No arguments were passed to the script.", call. = FALSE)
+}
+
+# Setup fishpond filtering for determining size factors
+
+# Fetch each flag's position. If that flag is passed, fetch the pos + 1 item and
+# use that as the value. Remove the items after to clean up the args
+extract_arg <- function(.flag, .default, .args) {
+  # Fetch the position of the flag (if there is one)
+  flag_pos <- which(.args == .flag)
+
+  # Make sure only one item matches at most
+  stopifnot(length(flag_pos) <= 1)
+
+  # IF nothing was passed, return the default
+  if (length(flag_pos) == 0) {
+    return(list(
+      flag = .flag,
+      value = .default,
+      args = .args
+    ))
+  }
+
+  # We have a flag passed. Make sure it isn't at the end (i.e., there is a value after)
+  stopifnot((flag_pos == length(.args)) == FALSE)
+
+  # Now fetch the item
+  param_value <- .args[flag_pos + 1]
+
+  # return the items
+  list(
+    flag = .flag,
+    value = param_value,
+    args = .args[-c(flag_pos, flag_pos + 1)]
+  )
+}
+
+# Extract the min transcript (maybe gene) count
+minCountFlag <- extract_arg("--minCount", NULL, args)
+args = minCountFlag$args
+min_count <- minCountFlag$value
+
+# Extract the min gene count
+minNFlag <- extract_arg("--minN", NULL, args)
+args = minNFlag$args
+min_n <- minNFlag$value
+
+# Extract the min gene count
+minCountGeneFlag <- extract_arg("--minCountGene", NULL, args)
+args = minCountGeneFlag$args
+min_count_gene <- minCountGeneFlag$value
+
+# Extract the min gene number
+minNGeneFlag <- extract_arg("--minNGene", NULL, args)
+args = minNGeneFlag$args
+min_n_gene <- minNGeneFlag$value
+
+# Message user
+message("Inferential replicates will be filtered based on the following criteria:")
+message(paste("counts >=", min_count))
+message(paste("n >=", min_n))
+if (is.null(min_count_gene) == FALSE) message(paste("gene_counts >=", min_count_gene))
+if (is.null(min_n_gene) == FALSE) message(paste("gene_n >=", min_n_gene))
+
+## List of sample and Directories ---------------------------
+# The script accepts four possible variations:
 #    1) samples and the directory to find the samples. This option requires a
 #       sample flag to be passed to the script.
 #    2) Just a single directory. If this option is selected, all folders in the
@@ -20,11 +86,7 @@ args = commandArgs(trailingOnly = TRUE)
 #    3) A list of directories. Similar to option 2, the directory names will be
 #       used as the sample names
 #    4) A list of samples and directories
-if (length(args) == 0) {
-  stop("No arguments were passed to the script.", call. = FALSE)
-}
 
-## List of sample and Directories ---------------------------
 samples_flag_pos <- which(args == "--samples")
 directory_flag_pos <- which(args == "--directory")
 
@@ -124,7 +186,7 @@ se <- tximeta(samples_table)
 # once the scaling is complete. This value will not affect normalization since
 # each replicate is normalized independently of the others.
 assay(se, "infRep0") <- assay(se, "counts")
-se <- scaleInfReps(se, minCount = 0, minN = 0)
+se <- scaleInfReps(se, minCount = min_count, minN = min_n)
 
 assay(se, "scaledTPMCounts") <- assay(se, "infRep0")
 assay(se, "infRep0") <- NULL
@@ -136,24 +198,6 @@ se <- computeInfRV(se)
 # First assemble the file name using metadata information from tximeta import
 db <- retrieveDb(se)
 txomeInfo <- metadata(se)$txomeInfo
-
-# Don't forget to clean up the names! Replace spaces with underscores, and make
-# it all lowercase. Finally, sanitize the name to remove anything bad.
-dbfile <-
-  str_c(
-    txomeInfo$source, txomeInfo$organism, txomeInfo$genome, txomeInfo$release, "sqlite",
-    sep = "."
-  ) |>
-  str_replace_all("\\s+", "_") |>
-  str_to_lower()
-  fs::path_sanitize()
-
-# Finally save a copy using the sqlite extension
-message("Saving transcript database")
-AnnotationDbi::saveDb(db, file = dbfile)
-
-# Build transcript annotation ---------------------------
-message("Building transcript annotation")
 
 # Get the genome build for naming purposes
 genome_build <-
@@ -168,6 +212,24 @@ genome_build <-
 if (length(genome_build) != 1) {
   genome_build <- metadata(se)$txomeInfo$genome |> str_replace_all("\\s+", "_") |> str_to_lower()
 }
+
+# Don't forget to clean up the names! Replace spaces with underscores, and make
+# it all lowercase. Finally, sanitize the name to remove anything bad.
+dbfile <-
+  str_c(
+    txomeInfo$source, txomeInfo$organism, genome_build, str_c("v", txomeInfo$release), "sqlite",
+    sep = "."
+  ) |>
+  str_replace_all("\\s+", "_") |>
+  str_to_lower() |>
+  fs::path_sanitize()
+
+# Finally save a copy using the sqlite extension
+message("Saving transcript database")
+AnnotationDbi::saveDb(db, file = dbfile)
+
+# Build transcript annotation ---------------------------
+message("Building transcript annotation")
 
 # Strings to name start and end columns
 feature_start_genome = str_c("feature_start_", genome_build)
@@ -308,15 +370,15 @@ quant_info <-
   )
 
 # Library format summary ---------------------------
-message("Gathering quantification results")
+message("Gathering library format summary")
 
 lib_format_counts <-
   file.path(dirname(sample_paths), "lib_format_counts.json") |>
   set_names(samples) |>
   map(jsonlite::read_json) |>
   map(as_tibble) |>
-  map2(samples, function(x, name) x |> dplyr::mutate(sample_id = name)) |>
-  reduce(dplyr::full_join) |>
+  map2(samples, function(x, name) x |> as_tibble() |> dplyr::mutate(sample_id = name)) |>
+  purrr::reduce(dplyr::full_join) |>
   dplyr::relocate(sample_id) |>
   dplyr::select(
     -read_files,
@@ -341,11 +403,13 @@ read_mapping_ambiguity <-
     ambig_df <- readr::read_tsv(path, progress = FALSE, show_col_types = FALSE)
 
     # Read from the first row the names of transcripts
-    names <- readr::read_tsv(quant_file, col_select = "Name", progress = FALSE, show_col_types = FALSE)
+    names <-
+      readr::read_tsv(quant_file, col_select = "Name", progress = FALSE, show_col_types = FALSE) |>
+      dplyr::pull(Name)
 
     # Quality check before merging and returning
     stopifnot(nrow(names) == nrow(ambig_df))
-    ambig_df |> dplyr::mutate(transcript_id = names)
+    return(ambig_df |> dplyr::mutate(transcript_id = names))
   })
 
 # Find the number of mapped reads that were uniquely assigned to a transcript
@@ -359,7 +423,7 @@ uniquely_mapping_reads <-
       df |> dplyr::select(transcript_id, UniqueCount) |> dplyr::rename({{ sample }} := UniqueCount)
     }
   ) |>
-  reduce(dplyr::full_join)
+  purrr::reduce(dplyr::full_join)
 
 # Find the number of reads that were assigned to multiple transcripts
 message("...for ambiguously mapping reads")
@@ -372,7 +436,7 @@ ambiguously_mapping_reads <-
       df |> dplyr::select(transcript_id, AmbigCount) |> dplyr::rename({{ sample }} := AmbigCount)
     }
   ) |>
-  reduce(dplyr::full_join)
+  purrr::reduce(dplyr::full_join)
 
 # Save quant summaries ---------------------------
 message("Saving summaries")
@@ -384,17 +448,96 @@ readr::write_csv(ambiguously_mapping_reads, "ambiguous-mappings.csv.gz")
 
 # Summarizing counts to gene ---------------------------
 message("Calculating gene counts")
-gse <- summarizeToGene(se)
+
+# If filtering values aren't set, take the transcript values
+if (is.null(min_count_gene)) min_count_gene <- min_count
+if (is.null(min_n_gene)) min_n_gene <- min_n
+
+# Fetch a new, unfiltered copy
+gse <- summarizeToGene(tximeta(samples_table))
 
 # Same logic as the transcripts is used for the genes
 assay(gse, "infRep0") <- assay(gse, "counts")
-gse <- scaleInfReps(gse, minCount = 0, minN = 0)
+gse <- scaleInfReps(gse, minCount = min_count_gene, minN = min_n_gene)
 
 assay(gse, "scaledTPMCounts") <- assay(gse, "infRep0")
 assay(gse, "infRep0") <- NULL
 
 # Now compute uncertainty
 gse <- computeInfRV(gse)
+
+# Library format summary ---------------------------
+message("Calculating transcript counts for differential transcript usage (DTU)")
+
+# Fetch a new SE
+se_dtu <- tximeta(samples_table)
+assay(se_dtu, "infRep0") <- assay(se_dtu, "counts")
+
+# Length mean for each transcript
+# Find the mean legnth of each transcript using all samples
+length_geomean <- exp(rowMeans(log(assay(se_dtu, "length"))))
+
+# DTU corrected median lengths, grouped by gene
+# Group each transcript by gene and find the median length
+median_length_geomean <-
+  length_geomean |> enframe(name = "transcript_id", value = "length") |>
+  dplyr::left_join(transcript_annotation |> dplyr::select(gene_id, transcript_id)) |>
+  dplyr::mutate(transcript_id, length = median(length), .by = gene_id) |>
+  dplyr::select(-gene_id) |>
+  deframe()
+
+# Actually correction phase.
+# 1) Scale the counts using fishpond
+# 2) Find the correction factor produce by fishpond
+# 3) Determine TPM using the original counts
+# 4) Scale the TPM to counts using the correction factor and median lengths
+assays(se_dtu) <-
+  pmap(
+    list(
+      scaleInfReps(se_dtu, minCount = min_count, minN = min_n) |> assays(),
+      assays(se_dtu),
+      assayNames(se_dtu)
+    ),
+    function(scaledCounts, originalCounts, repName) {
+
+      # Only operate on infreps
+      if (str_detect(repName, "infRep") == FALSE) { return(scaledCounts) }
+
+      # Calculate TPM from the scaled counts
+      # scaledTPM <- (scaledCounts / length_geomean)
+      # scaledAbundance <- 1e6 * t(t(scaledTPM) / colSums(scaledTPM))
+
+      # Fetch size factors
+      # libSize <- exp(mean(log( colSums(originalCounts)  )))
+      # sf <- libSize / colSums(scaledCounts)
+
+      # Fetch shared library size, corrected for by size factor
+      library_size_correction <- colSums(scaledCounts)
+
+      # convert the fragmentation rate based on our median values
+      length_corrected_counts <- originalCounts / assay(se_dtu, "length")
+      abundance <- t(t(length_corrected_counts) / colSums(length_corrected_counts))
+
+      # TPM (abundance) to counts using the median lengths
+      effective_fragmentation <- abundance * median_length_geomean
+      t(t(effective_fragmentation) * (library_size_correction / colSums(effective_fragmentation)))
+    }
+  )
+
+# Save the length
+assay(se_dtu, "length") <-
+  matrix(
+    rep(median_length_geomean, ncol(assay(se_dtu, "length"))),
+    ncol = ncol(assay(se_dtu, "length")),
+    dimnames = dimnames(assay(se_dtu, "length"))
+  )
+
+# Save the coutns
+assay(se_dtu, "dtuScaledTPMCounts") <- assay(se_dtu, "infRep0")
+assay(se_dtu, "infRep0") <- NULL
+
+# Now compute uncertainty
+se_dtu <- computeInfRV(se_dtu)
 
 # Save all the counts ---------------------------
 message("Saving counts from all experiments")
@@ -403,25 +546,29 @@ message("Saving counts from all experiments")
 save_se_assay <- function(se, assay, .rownames, .file) {
   readr::write_csv(
     assay(se, assay) |> as_tibble(rownames = .rownames),
-    .file = ""
+    file = .file
   )
 }
 
 # Save the original point estimates as csv files
-save_se_assay(se, "scaledTPMCounts", .rownames = "transcript_id", file = "transcript/scaled-counts.csv")
-save_se_assay(gse, "scaledTPMCounts", .rownames = "gene_id", file = "gene/scaled-counts.csv")
+save_se_assay(se, "scaledTPMCounts", .rownames = "transcript_id", .file = "transcript/scaled-counts.csv")
+save_se_assay(gse, "scaledTPMCounts", .rownames = "gene_id", .file = "gene/scaled-counts.csv")
+save_se_assay(se_dtu, "dtuScaledTPMCounts", .rownames = "transcript_id", .file = "dtu/scaled-counts.csv")
 
 # Length files
-save_se_assay(se, "length", .rownames = "transcript_id", file = "transcript/effective-lengths.csv.gz")
-save_se_assay(gse, "length", .rownames = "gene_id", file = "gene/effective-lengths.csv.gz")
+save_se_assay(se, "length", .rownames = "transcript_id", .file = "transcript/effective-lengths.csv.gz")
+save_se_assay(gse, "length", .rownames = "gene_id", .file = "gene/effective-lengths.csv.gz")
+save_se_assay(se_dtu, "length", .rownames = "transcript_id", .file = "dtu/effective-lengths.csv.gz")
 
 # mean estimates
-save_se_assay(se, "mean", .rownames = "transcript_id", file = "transcript/infreps-mean.csv.gz")
-save_se_assay(gse, "mean", .rownames = "gene_id", file = "gene/infreps-mean.csv.gz")
+save_se_assay(se, "mean", .rownames = "transcript_id", .file = "transcript/infreps-mean.csv.gz")
+save_se_assay(gse, "mean", .rownames = "gene_id", .file = "gene/infreps-mean.csv.gz")
+save_se_assay(se_dtu, "mean", .rownames = "transcript_id", .file = "dtu/infreps-mean.csv.gz")
 
 # variance estimates
-save_se_assay(se, "variance", .rownames = "transcript_id", file = "transcript/infreps-relative-variance.csv.gz")
-save_se_assay(gse, "variance", .rownames = "gene_id", file = "gene/infreps-relative-variance.csv.gz")
+save_se_assay(se, "variance", .rownames = "transcript_id", .file = "transcript/infreps-relative-variance.csv.gz")
+save_se_assay(gse, "variance", .rownames = "gene_id", .file = "gene/infreps-relative-variance.csv.gz")
+save_se_assay(se_dtu, "variance", .rownames = "transcript_id", .file = "dtu/infreps-relative-variance.csv.gz")
 
 # Save the scaled infReps as an RDS file
 save_se_infreps <- function(se, .rownames, .file) {
@@ -435,3 +582,4 @@ save_se_infreps <- function(se, .rownames, .file) {
 
 save_se_infreps(se, .rownames = "transcript_id", .file = "transcript/infreps.rds")
 save_se_infreps(gse, .rownames = "gene_id", .file = "gene/infreps.rds")
+save_se_infreps(se_dtu, .rownames = "transcript_id", .file = "dtu/infreps.rds")
