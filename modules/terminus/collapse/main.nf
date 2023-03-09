@@ -4,25 +4,23 @@ process TERMINUS_COLLAPSE {
     label "tool_terminus"
 
     input:
-        path  quant
-        path  terminus
+        path  quant,    stageAs: "salmon/*"
+        path  terminus, stageAs: "terminus/*"
 
     output:
-        path "collapsed/*", emit: results
-        path terminus,      emit: input
+        path "terminus/*",  emit: results
 
     script:
         args = task.ext.args ?: ""
         input = (quant instanceof List ? quant : quant.toList()).join(' ')
         """
-        terminus collapse $args -d $input -o collapsed
+        terminus collapse $args -d $input -o terminus
         """
 
     stub:
         input = (quant instanceof List ? quant : quant.toList()).join(' ')
         """
-        mkdir -p collapsed
-        echo '$terminus $input' > collapsed/collapsed.txt
-        touch collapsed/seconditem.txt
+        mkdir terminus
+        echo '$terminus $input' > terminus/collapsed.txt
         """
 }
