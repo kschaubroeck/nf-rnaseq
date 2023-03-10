@@ -2,6 +2,8 @@ import java.nio.file.Files
 
 include { SALMON_INDEX } from '../modules/salmon/index'
 include { SALMON_QUANT } from '../modules/salmon/quant'
+include { TAR as TAR_SALMON_INDEX } from '../modules/utils/tar'
+include { TAR as TAR_SALMON_QUANT } from '../modules/utils/tar'
 
 workflow SALMON_RNASEQ {
     take:
@@ -17,6 +19,7 @@ workflow SALMON_RNASEQ {
             // build
             index = SALMON_INDEX(transcript_fasta, genome_fasta)
             salmon_index = index.index
+            TAR_SALMON_INDEX(salmon_index)
 
             // Quantify with Salmon
             quant = SALMON_QUANT(samples, salmon_index)
@@ -30,8 +33,10 @@ workflow SALMON_RNASEQ {
             // index file manually. If absent, nextflow would then only pass it to the first item. By using first()
             // we can re-use the item
             quant = SALMON_QUANT(samples, salmon_index.first())
-
         }
+
+        // compress output (directory paths only)
+        TAR_SALMON_QUANT(quant.results.map{ it[1] })
 
     emit:
         index   = salmon_index
