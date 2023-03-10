@@ -18,18 +18,20 @@ workflow SALMON_RNASEQ {
             index = SALMON_INDEX(transcript_fasta, genome_fasta)
             salmon_index = index.index
 
+            // Quantify with Salmon
+            quant = SALMON_QUANT(samples, salmon_index)
+
         } else {
 
-            // Find
+            // Find index
             salmon_index = Channel.fromPath(index_path)
 
-        }
+            // Use first() to keep repeating the output. This workaround is needed in case the user passed the 
+            // index file manually. If absent, nextflow would then only pass it to the first item. By using first()
+            // we can re-use the item
+            quant = SALMON_QUANT(samples, salmon_index.first())
 
-        // Quantify with Salmon
-        // Use first() to keep repeating the output. This workaround is needed in case the user passed the 
-        // index file manually. If absent, nextflow would then only pass it to the first item. By using first()
-        // we can re-use the item
-        quant = SALMON_QUANT(samples, salmon_index.first())
+        }
 
     emit:
         index   = salmon_index
