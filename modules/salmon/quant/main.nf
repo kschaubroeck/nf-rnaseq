@@ -16,7 +16,7 @@ process SALMON_QUANT {
         single = (sample.single == true ? "--fldMean $sample.mean --fldSD $sample.sd" : "")
         fastqs = (sample.single == true ? "--unmatedReads ${reads[0]}" : "--mates1 ${reads[0]} --mates2 ${reads[1]}")
         """
-        salmon quant --dumpEqWeights --threads $task.cpus --index $index $fastqs $single --output $sample.id $args
+        salmon quant $args --dumpEqWeights --threads $task.cpus --index $index $fastqs $single --output $sample.id
         """
 
     stub:

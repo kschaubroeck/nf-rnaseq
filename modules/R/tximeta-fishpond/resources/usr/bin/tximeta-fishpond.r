@@ -51,12 +51,12 @@ extract_arg <- function(.flag, .default, .args) {
 }
 
 # Extract the min transcript (maybe gene) count
-minCountFlag <- extract_arg("--minCount", NULL, args)
+minCountFlag <- extract_arg("--minCount", 0, args)
 args = minCountFlag$args
 min_count <- minCountFlag$value
 
 # Extract the min gene count
-minNFlag <- extract_arg("--minN", NULL, args)
+minNFlag <- extract_arg("--minN", 0, args)
 args = minNFlag$args
 min_n <- minNFlag$value
 

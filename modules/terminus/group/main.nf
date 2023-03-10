@@ -7,25 +7,27 @@ process TERMINUS_GROUP {
         tuple val(sample), path(quant)
 
     output:
-        path salmonOutput,      emit: salmon
-        path output,            emit: terminus
+        path salmon_output,     type: "dir", emit: salmon
+        path outputDir,         type: "dir", emit: terminus
 
     script:
         args = task.ext.args ?: ""
-        output = "terminus/" + sample.id
-        salmonOutput = "salmon." + sample.id
 
+        base = quant.getBaseName()
+        outputDir = "terminus_output/$base"
+
+        salmon_output = quant
         """
-        terminus group $args -d $quant -o terminus
-        mv $quant $salmonOutput
+        terminus group $args -d $salmon_output -o terminus_output
         """
 
     stub:
-        output = "terminus/" + sample.id
-        salmonOutput = "salmon." + sample.id
+        salmon_output = quant
+        base = quant.getBaseName()
+        outputDir = "terminus_output/$base"
         """
-        mkdir -p $output
-        touch $output/clusters.txt
-        mv $quant $salmonOutput
+        mkdir terminus_output
+        mkdir $outputDir
+        touch $outputDir/groups.txt
         """
 }
