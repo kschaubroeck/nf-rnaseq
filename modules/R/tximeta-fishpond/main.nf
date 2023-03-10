@@ -13,8 +13,8 @@ process TXIMETA_FISHPOND {
         path "dtu/*",                             emit: dtu
         path "quantification-summary.csv.gz",     emit: quant
         path "library-format.csv.gz",             emit: library_format
-        path "unique-mappings-summary.csv.gz",    emit: unique_mappings
-        path "ambiguous-mappings-summary.csv.gz", emit: ambiguous_mappings
+        path "unique-mappings.csv.gz",            emit: unique_mappings
+        path "ambiguous-mappings.csv.gz",         emit: ambiguous_mappings
         path "tximeta.log",                       emit: log
         path "tximeta.json",                      emit: tximeta_json
         path "annotation/*",                      emit: annotation_data
@@ -80,8 +80,8 @@ process TXIMETA_FISHPOND {
 
         touch quantification-summary.csv.gz
         touch library-format.csv.gz
-        touch unique-mappings-summary.csv.gz
-        touch ambiguous-mappings-summary.csv.gz
+        touch unique-mappings.csv.gz
+        touch ambiguous-mappings.csv.gz
 
         stub-tximeta-fishpond.r --samples $samples --directory $paths &> tximeta.log
         """
