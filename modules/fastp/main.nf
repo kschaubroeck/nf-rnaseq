@@ -134,10 +134,10 @@ process FASTP {
         track_discard = task.ext.trackDiscardedReads ?: false  
 
         """
-        mkdir report_dir
-        mkdir json_dir
-        mkdir html_dir
-        mkdir discard_dir
+        mkdir $report_dir
+        mkdir $json_dir
+        mkdir $html_dir
+        mkdir $discard_dir
 
         touch $out1
         ${fastqs[1] ? 'touch ' + out2 : ''}
