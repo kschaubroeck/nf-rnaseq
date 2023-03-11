@@ -110,6 +110,12 @@ help_messages = [
         terminusWeighttolerance: "Difference in conditional probability when defining it two groups are similar",
         terminusSeed: "Random seed",
         minSamplesForCollapse: "Percent of samples a group must occur in to be considered for collapsing"
+    ],
+    "Fishpond-Tximeta": [
+        fishpondMinCount: "Minimum count a transcript/gene must get to be included in a size factor calculation",
+        fishpondMinN: "Minimum number of samples that must hit the minimum count for a gene/transcript to be used in size calculations",
+        fishpondMinCountGene: "fishpondMinCount, but for genes",
+        fishpondMinNGene: "fishpondMinNGene, but for genes"
     ]
 ]
 
