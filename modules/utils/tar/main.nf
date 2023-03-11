@@ -10,13 +10,13 @@ process TAR {
 
     script:
         args    = task.ext.args ?: ""
-        outname = task.ext.fileName ?: (input.getName() + ".tar")
+        outname = task.ext.fileName ?: (input.getName() + ".tar.gz")
         """
-        tar -czvf $args $outname $input
+        tar $args -czhf $outname $input
         """
 
     stub:
-        outname = task.ext.fileName ?: (input.getName() + ".tar")
+        outname = task.ext.fileName ?: (input.getName() + ".tar.gz")
         """
         touch $outname
         """
