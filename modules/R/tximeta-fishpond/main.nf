@@ -70,6 +70,9 @@ process TXIMETA_FISHPOND {
         touch gene/infreps-relative-variance.csv.gzeffective-lengths.csv.gz
         touch dtu/infreps-relative-variance.csv.gzeffective-lengths.csv.gz
 
+        touch transcript/raw-counts.csv
+        touch gene/raw-counts.csv
+
         touch transcript/scaled-counts.csv
         touch gene/scaled-counts.csv
         touch dtu/scaled-counts.csv
