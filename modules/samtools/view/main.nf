@@ -12,12 +12,12 @@ process SAMTOOLS_VIEW {
 
     script:
         args = task.ext.args ?: ""
-        bam  = task.ext.bamFile ?: sam_file.getBaseName() + ".bam"
+        bam  = task.ext.bamFile ?: sam_file.getSimpleName() + ".bam"
         """
         samtools view $args -@$task.cpus --with-header --bam --output $bam $sam_file
         """
     stub:
-        bam  = task.ext.bamFile ?: sam_file.getBaseName() + ".bam"
+        bam  = task.ext.bamFile ?: sam_file.getSimpleName() + ".bam"
         """
         touch $bam
         """

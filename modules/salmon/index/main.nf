@@ -11,7 +11,7 @@ process SALMON_INDEX {
 
     output:
         path "salmon-index",                emit: index
-        path "*.{fasta,fasta.gz,fa,fa.gz}", emit: fasta
+        path "*.{fasta,fasta.gz,fa,fa.gz}", includeInputs: true, emit: fasta
         path "decoy-names.txt",             optional: true, emit: decoys
 
     script:
@@ -23,8 +23,6 @@ process SALMON_INDEX {
         genome_decoy = gzipped ? "<(gunzip -c $genome_fasta)" : $genome_fasta
         gentrome     = gzipped ? "gentrome.fa.gz" : "gentrome.fa"
         """
-        mkdir fasta
-
         grep "^>" $genome_decoy | cut -d " " -f 1 > decoy-names.txt
         sed -i.bak -e 's/>//g' decoy-names.txt
         cat $transcriptome_fasta $genome_fasta > $gentrome
