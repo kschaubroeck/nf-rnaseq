@@ -9,20 +9,35 @@ process SALMON_QUANT {
 
     output:
         tuple val(sample), path("$sample.id"), emit: results
-        stdout                                 emit: sams
+        path  sam_file,                        optional: true, emit: sams
 
     script:
         args   = task.ext.args ?: ""
         single = (sample.single == true ? "--fldMean $sample.mean --fldSD $sample.sd" : "")
         fastqs = (sample.single == true ? "--unmatedReads ${reads[0]}" : "--mates1 ${reads[0]} --mates2 ${reads[1]}")
-        """
-        salmon quant $args --dumpEqWeights --threads $task.cpus --index $index $fastqs $single --output $sample.id
-        """
+        sam_file = sample.id + ".sam.gz"
 
+        if (task.ext.outSam == true) {
+            """
+            salmon quant --writeMappings $args --dumpEqWeights --threads $task.cpus --index $index $fastqs $single --output $sample.id | gzip -9 > $sam_file
+            """           
+        } else {
+            """
+            salmon quant $args --dumpEqWeights --threads $task.cpus --index $index $fastqs $single --output $sample.id 
+            """
+        }
     stub:
-        """
-        mkdir $sample.id
-        touch $sample.id/quant.sf
-        echo 'CONTENT FOR SAM FILE'
-        """
+        sam_file = sample.id + ".sam.gz"
+        if (task.ext.outSam == true) {
+            """
+            mkdir $sample.id
+            touch $sample.id/quant.sf
+            touch $sam_file
+            """       
+        } else {
+            """
+            mkdir $sample.id
+            touch $sample.id/quant.sf
+            """  
+        }
 }
