@@ -6,17 +6,17 @@ process TAR {
         path input
 
     output:
-        path outname
+        path outname, emit: compressed
 
     script:
         args    = task.ext.args ?: ""
-        outname = input.getBaseName() + ".tar"
+        outname = task.ext.fileName ?: (input.getName() + ".tar.gz")
         """
-        tar -czvf $args $outname $input
+        tar $args -czhf $outname $input
         """
 
     stub:
-        outname = input.getBaseName() + ".tar"
+        outname = task.ext.fileName ?: (input.getName() + ".tar.gz")
         """
         touch $outname
         """

@@ -86,13 +86,12 @@ if (is.null(min_n_gene) == FALSE) message(paste("gene_n >=", min_n_gene))
 #    3) A list of directories. Similar to option 2, the directory names will be
 #       used as the sample names
 #    4) A list of samples and directories
-
 samples_flag_pos <- which(args == "--samples")
 directory_flag_pos <- which(args == "--directory")
 
 if (length(samples_flag_pos) == 0 && length(directory_flag_pos) == 0) {
   # Update the user about what method was picked
-  message("Using passed list of directories.")
+  message("Using passed list of directories as samples...")
 
   # Get the names of each folder (sample ids) and the sample's directory as a
   # named vector.
@@ -103,7 +102,7 @@ if (length(samples_flag_pos) == 0 && length(directory_flag_pos) == 0) {
 ## List of directories ---------------------------
 if (length(samples_flag_pos) != 0 && length(directory_flag_pos) != 0) {
   # Update the user about what method was picked
-  message("Using the passed list of samples and directories")
+  message("Using passed list of samples and directories...")
 
   # Find out which item is listed first: samples or directories
   # If samples are listed first:
@@ -124,7 +123,7 @@ if (length(samples_flag_pos) != 0 && length(directory_flag_pos) != 0) {
 # want to search one directory for the samples
 if (args[1] == "--directory" && length(samples_flag_pos) == 0) {
   # Update the user about what method was picked
-  message("Searching directory for samples.")
+  message("Searching given directory for samples...")
 
   # Find directory for targets and find get the names of the folders (samples) inside
   directory <- args[2]
@@ -137,7 +136,7 @@ if (args[1] == "--directory" && length(samples_flag_pos) == 0) {
 ## List of samples and a single directory ---------------------------
 if (args[1] == "--samples" && length(directory_flag_pos) == 0) {
   # Update the user about what method was picked
-  message("Using passed list of samples to search a target directory.")
+  message("Using passed list of samples to search a target directory...")
 
   # Get the samples. The samples will be everything but the first item (the flag),
   # and the last item (directory)
@@ -173,12 +172,12 @@ stopifnot(all(file.exists(sample_paths)))
 samples_table <- enframe(sample_paths, name = "names", value = "files")
 
 # Update the user
-message("Samples located")
+message(paste0(length(samples), "samples located"))
 message("Samples: ", str_flatten(samples, collapse = " "))
 message("Paths: ",   str_flatten(sample_paths, collapse = " "))
 
 # tximeta: import transcript level data ---------------------------
-message("Importing transcripts")
+message("Importing transcript counts...")
 se <- tximeta(samples_table)
 
 # We want to normalize the counts, so we are going to label them as an inferential
@@ -196,6 +195,7 @@ se <- computeInfRV(se)
 
 # Save annotation database (sqlite) ---------------------------
 # First assemble the file name using metadata information from tximeta import
+message("Retrieving transcript database...")
 db <- retrieveDb(se)
 txomeInfo <- metadata(se)$txomeInfo
 
@@ -225,11 +225,11 @@ dbfile <-
   fs::path_sanitize()
 
 # Finally save a copy using the sqlite extension
-message("Saving transcript database")
+message("Saving transcript database...")
 AnnotationDbi::saveDb(db, file = dbfile)
 
 # Build transcript annotation ---------------------------
-message("Building transcript annotation")
+message("Building transcript annotation...")
 
 # Strings to name start and end columns
 feature_start_genome = str_c("feature_start_", genome_build)
@@ -258,7 +258,7 @@ transcript_annotation <-
   tidyr::unnest_longer(gene_id)
 
 # Get the GC content
-message("Finding transcript GC content")
+message("Parsing cDNA for GC content...")
 cdna <- retrieveCDNA(se)
 
 transcripts_percent_gc <-
@@ -273,7 +273,7 @@ transcript_annotation <-
   dplyr::full_join(transcript_annotation, transcripts_percent_gc)
 
 # Build gene annotation ---------------------------
-message("Building gene annotation")
+message("Building gene annotation...")
 
 # Find out how many transcripts each gene has
 transcript_counts_by_gene <-
@@ -295,7 +295,7 @@ gene_annotation <-
   )
 
 # Type coercing for transcript data ---------------------------
-message("Finishing up transcript annotation.")
+message("Finishing up transcript annotation...")
 transcript_annotation <-
   transcript_annotation |>
   dplyr::mutate(
@@ -319,7 +319,7 @@ tximeta_info <-
   jsonlite::toJSON(pretty = TRUE)
 
 # Saving annotation data ---------------------------
-message("Saving...")
+message("Saving annotations...")
 
 readr::write_rds(cdna, "sequence/cdna.rds", compress = "gz")
 
@@ -334,7 +334,7 @@ readr::write_file(annotation_metadata, "annotation/metadata.json")
 readr::write_file(annotation_source, "annotation/source.json")
 
 # Quantification summary ---------------------------
-message("Gathering quantification results")
+message("Importing quantification summary stats...")
 
 # Get quality data about how the alignment and quantification went
 # We remove the `length_class` variable because it didn't work with tibbles
@@ -370,7 +370,7 @@ quant_info <-
   )
 
 # Library format summary ---------------------------
-message("Gathering library format summary")
+message("Importing library type summary stats...")
 
 lib_format_counts <-
   file.path(dirname(sample_paths), "lib_format_counts.json") |>
@@ -439,7 +439,7 @@ ambiguously_mapping_reads <-
   purrr::reduce(dplyr::full_join)
 
 # Save quant summaries ---------------------------
-message("Saving summaries")
+message("Saving summaries...")
 
 readr::write_csv(quant_info, "quantification-summary.csv.gz")
 readr::write_csv(lib_format_counts, "library-format.csv.gz")
@@ -447,7 +447,7 @@ readr::write_csv(uniquely_mapping_reads, "unique-mappings.csv.gz")
 readr::write_csv(ambiguously_mapping_reads, "ambiguous-mappings.csv.gz")
 
 # Summarizing counts to gene ---------------------------
-message("Calculating gene counts")
+message("Calculating gene counts...")
 
 # If filtering values aren't set, take the transcript values
 if (is.null(min_count_gene)) min_count_gene <- min_count
@@ -467,7 +467,7 @@ assay(gse, "infRep0") <- NULL
 gse <- computeInfRV(gse)
 
 # Library format summary ---------------------------
-message("Calculating transcript counts for differential transcript usage (DTU)")
+message("Calculating transcript counts for differential transcript usage (DTU)...")
 
 # Fetch a new SE
 se_dtu <- tximeta(samples_table)
@@ -540,7 +540,7 @@ assay(se_dtu, "infRep0") <- NULL
 se_dtu <- computeInfRV(se_dtu)
 
 # Save all the counts ---------------------------
-message("Saving counts from all experiments")
+message("Saving counts from all experiments...")
 
 # Helper function for saving summarized experiments
 save_se_assay <- function(se, assay, .rownames, .file) {
@@ -549,6 +549,10 @@ save_se_assay <- function(se, assay, .rownames, .file) {
     file = .file
   )
 }
+
+# Save the raw counts
+save_se_assay(se, "counts", .rownames = "transcript_id", .file = "transcript/raw-counts.csv")
+save_se_assay(gse, "counts", .rownames = "gene_id", .file = "gene/raw-counts.csv")
 
 # Save the original point estimates as csv files
 save_se_assay(se, "scaledTPMCounts", .rownames = "transcript_id", .file = "transcript/scaled-counts.csv")
@@ -583,3 +587,9 @@ save_se_infreps <- function(se, .rownames, .file) {
 save_se_infreps(se, .rownames = "transcript_id", .file = "transcript/infreps.rds")
 save_se_infreps(gse, .rownames = "gene_id", .file = "gene/infreps.rds")
 save_se_infreps(se_dtu, .rownames = "transcript_id", .file = "dtu/infreps.rds")
+
+# Finish and citation ---------------------------
+message("Done.")
+citation("tximeta")
+
+sessionInfo()

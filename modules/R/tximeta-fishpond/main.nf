@@ -24,6 +24,7 @@ process TXIMETA_FISHPOND {
     script:
         samples = samples.join(' ')
         paths   = paths.join(' ')
+        args   = task.ext.args ?: ""
         """
         mkdir -p transcript
         mkdir -p dtu
@@ -33,7 +34,7 @@ process TXIMETA_FISHPOND {
         mkdir -p annotation/rds
         mkdir -p sequence
         
-        tximeta-fishpond.r --samples $samples --directory $paths &> tximeta.log
+        tximeta-fishpond.r --samples $samples --directory $paths $args &> tximeta.log
         """
 
     stub:
@@ -69,6 +70,9 @@ process TXIMETA_FISHPOND {
         touch transcript/infreps-relative-variance.csv.gz
         touch gene/infreps-relative-variance.csv.gzeffective-lengths.csv.gz
         touch dtu/infreps-relative-variance.csv.gzeffective-lengths.csv.gz
+
+        touch transcript/raw-counts.csv
+        touch gene/raw-counts.csv
 
         touch transcript/scaled-counts.csv
         touch gene/scaled-counts.csv

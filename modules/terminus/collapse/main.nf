@@ -8,7 +8,7 @@ process TERMINUS_COLLAPSE {
         path  terminus,    stageAs: "terminus/*" // Must match the default for terminus_dir
 
     output:
-        path terminus_dir, includeInputs: true, emit: results
+        path "$terminus_dir/*", includeInputs: true, emit: results
 
     script:
         args = task.ext.args ?: ""

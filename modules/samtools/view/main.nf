@@ -4,22 +4,21 @@ process SAMTOOLS_VIEW {
     label "tool_samtools"
 
     input:
-        val sample
-        stdin
+        val  sample
+        path sam_file
 
     output:
         tuple val(sample), path(bam), emit: bams
 
     script:
         args = task.ext.args ?: ""
-        bam  = task.ext.bamFile ?: sample + ".bam"
+        bam  = task.ext.bamFile ?: sam_file.getSimpleName() + ".bam"
         """
-        cat - | samtools view $args -@$task.cpus --bam --output $bam --with-header
+        samtools view $args -@$task.cpus --with-header --bam --output $bam $sam_file
         """
-
     stub:
-        bam  = task.ext.bamFile ?: sample + ".bam"
+        bam  = task.ext.bamFile ?: sam_file.getSimpleName() + ".bam"
         """
-        cat - > $bam
+        touch $bam
         """
 }
