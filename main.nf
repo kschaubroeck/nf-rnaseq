@@ -45,7 +45,6 @@ help_messages = [
         skipFastqPrep: "Skip pre-processing FASTQ files using fastp.",
         saveTrimmedFastq: "Save a copy of the processed FASTQ files.",
         trimmedFastqCompression: "Level of compression to use when gzipping FASTQ files",
-        trackDiscardedReads: "Write a copy of all reads thrown out due to filtering and track which reads became orphaned.",
         baseQuality: "Minimum phred score as base must achieve to 'pass' this filte.",
         requiredQualityBases: "Percent of bases that must pass the quality filter to keep the read",
         unknownBaseLimit: "Maximum number of N bases a read can have or else it will be thrown out",
