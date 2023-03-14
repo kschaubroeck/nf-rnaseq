@@ -31,14 +31,10 @@ process SALMON_INDEX {
         """
     stub:
         index_name = task.ext.indexName ?: "salmon-index"
-        transcriptome_fasta = "transcriptome.fa.gz"
-        genome_fasta        = "genome.fa.gz"
         gentrome            = "gentrome.fa.gz"
         """
         mkdir $index_name
         touch $index_name/kmers.txt
-        touch $transcriptome_fasta
-        touch $genome_fasta
         touch $gentrome
         touch decoy-names.txt
         """

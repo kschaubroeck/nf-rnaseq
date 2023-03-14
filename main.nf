@@ -13,13 +13,17 @@ ANSI_GREY   = ANSI_GRAY
 
 /* Module includes
 ---------------------------------------------------------------------------- */
+include { import_samples } from './modules/samples/import'
+include { FASTP } from './modules/fastp'
+include { SALMON_INDEX } from './modules/salmon/index'
+include { SALMON_QUANT } from './modules/salmon/quant'
+include { TAR as TAR_SALMON_INDEX } from './modules/utils/tar'
+include { TAR as TAR_SALMON_QUANT } from './modules/utils/tar'
 include { SAMTOOLS_VIEW as SAMTOOLS_VIEW_SALMON_ALIGNMENT } from './modules/samtools/view'
-
-/* Subworkflow includes
----------------------------------------------------------------------------- */
-include { RNASEQ_PRE_PROCESS } from './subworkflows/pre-process'
-include { SALMON_RNASEQ } from './subworkflows/salmon'
-include { POST_PROCESS_SALMON_RNASEQ } from './subworkflows/post-process'
+include { TERMINUS_GROUP } from './modules/terminus/group'
+include { TERMINUS_COLLAPSE } from './modules/terminus/collapse'
+include { TXIMETA_FISHPOND } from './modules/R/tximeta-fishpond'
+include { TAR as TAR_TERMINUS } from './modules/utils/tar'
 
 /* Help and start-up
 ---------------------------------------------------------------------------- */
@@ -132,18 +136,53 @@ log_params(help_messages, params)
 /* Main Workflow
 ---------------------------------------------------------------------------- */
 workflow {
-    // Load the samples from CSV file
-    samples = RNASEQ_PRE_PROCESS(params.csv)
+    // Make sure the sample csv file exists
+    if (params.csv == "" || file(params.csv).exists() == false) {
+        error "Sample CSV file located at $params.csv does not exist."
+    }
 
-    // Align and quantify with Salmon
-    salmon  = SALMON_RNASEQ(samples.trimmed, params.transcriptome, params.genome, params.index)
+    // Import load samples and pre-process using fastp
+    samples = FASTP(import_samples(params.csv))
+
+    // Find the index or build it from the FASTA files
+    if (params.index == "" || params.index == null || file(params.index).exists() == false) {
+        // Build index
+        salmon_index = SALMON_INDEX(params.transcriptome, params.genome)
+        TAR_SALMON_INDEX(salmon_index.index)
+
+        // Quantify
+        quant = SALMON_QUANT(samples.trimmed, salmon_index.index)
+    } else {
+        // Pre-supplied index
+        salmon_index = Channel.fromPath(params.index)
+
+        // Use first() to keep repeating the output. This workaround is needed in case the user passed the 
+        // index file manually. If absent, nextflow would then only pass it to the first item. By using first()
+       // we can re-use the item
+        quant = SALMON_QUANT(samples.trimmed, salmon_index.first())
+    }
+
+    // compress output (directory paths only)
+    TAR_SALMON_QUANT(quant.results.map{ it[1] })
 
     // Salmon alignments to BAM
     if (params.bam) {
-        SAMTOOLS_VIEW_SALMON_ALIGNMENT(salmon.results.map{ it[0].id }, salmon.sams)
+        SAMTOOLS_VIEW_SALMON_ALIGNMENT(quant.results.map{ it[0].id }, quant.sams)
     }
 
-    // Post-process quants
-    POST_PROCESS_SALMON_RNASEQ(salmon.results)
+    // Prepare for post-processing
+    directories = quant.results.map { it[1] }.collect()
+    samples = quant.results.map { it[0].id }.collect()
+
+    // Begin tximeta and fishpond
+    TXIMETA_FISHPOND(samples, directories)
+
+    // Terminus for grouping together problematic transcripts
+    groups = TERMINUS_GROUP(quant.results)
+    terminus = TERMINUS_COLLAPSE(groups.salmon.collect(), groups.terminus.collect())
+
+    // compress terminus output to save space
+    // We need to get all child items, which is why we flatten the channel
+    TAR_TERMINUS(terminus.results.flatten())
 }
 
