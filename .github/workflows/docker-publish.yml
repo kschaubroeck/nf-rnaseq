@@ -1,6 +1,6 @@
 # Purpose: Upon pushing to main branch, create a docker image and store it in
 # the repos' packages
-name: Create Docker Image
+name: Create Docker Image 
 
 # Specify the actions that trigger the workflow.
 # For our purposes, this will be when we push to the main branch OR when a release
@@ -8,8 +8,7 @@ name: Create Docker Image
 on:
   push:
     branches: [ "main" ]
-    # Publish semver tags as releases.
-    tags: [ 'v*.*.*' ]
+    # Publish semver tags as releases
 
 # Specify some environment variables we will be using in the workflow
 env:
