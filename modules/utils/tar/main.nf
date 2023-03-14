@@ -1,5 +1,6 @@
 process TAR {
     tag "$input"
+    label "process_medium_resources"
     label "ubuntu"
 
     input:

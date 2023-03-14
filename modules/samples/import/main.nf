@@ -2,8 +2,8 @@
 def import_samples(samples_metadata, seperator = ",") {
     // Fetch samples from file
     samples = Channel.fromPath(samples_metadata, checkIfExists: true)
-                .take( params.dev ? params.devInputs : -1 )
                 .splitCsv(sep: seperator, header: ["sampleId", "read1", "read2", "mean", "sd"])
+                .take( params.dev ? params.devInputs : -1 )
     .map { row ->
         // Let's get the error checking out of the way and make sure there is an id
         if (row.sampleId == null || row.sampleId == "") {
