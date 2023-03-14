@@ -1,12 +1,13 @@
 # Purpose: Upon pushing to main branch, create a docker image and store it in
 # the repos' packages
-name: Create Docker Image for Release
+name: Create Docker Image Release
 
 # Specify the actions that trigger the workflow.
 # For our purposes, this will be when we push to the main branch OR when a release
 # has a semantic tag
 on:
   push:
+    # Publish semver tags as releases.
     tags: [ 'v*.*.*' ]
 
 # Specify some environment variables we will be using in the workflow
@@ -37,6 +38,12 @@ jobs:
         with:
           fetch-depth: 0
 
+      # Check for what files have changed
+      # https://github.com/marketplace/actions/changed-files
+      - name: Get changed files
+        id: changed-files
+        uses: tj-actions/changed-files@v35
+
       # Workaround: https://github.com/docker/build-push-action/issues/461
       # Code originates from github's demo
       - name: Setup Docker buildx
@@ -48,6 +55,7 @@ jobs:
       # For source, see: https://github.com/docker/login-action
       - name: Log into registry ${{ env.REGISTRY }}
         # Only run if the lock file or Dockerfile has changed which means the container needs re-built
+        if: contains(steps.changed-files.outputs.modified_files, 'renv.lock') || contains(steps.changed-files.outputs.modified_files, 'Docker')
         uses: docker/login-action@28218f9b04b4f3f62068d7b6ce6ca5b26e35336c
         with:
           registry: ${{ env.REGISTRY }}
@@ -58,6 +66,7 @@ jobs:
       # For source, see: https://github.com/docker/metadata-action
       - name: Extract Docker metadata
         # Only run if the lock file or Dockerfile has changed which means the container needs re-built
+        if: contains(steps.changed-files.outputs.modified_files, 'renv.lock') || contains(steps.changed-files.outputs.modified_files, 'Docker')
         id: meta
         uses: docker/metadata-action@98669ae865ea3cffbcbaa878cf57c20bbf1c6c38
         with:
@@ -67,6 +76,7 @@ jobs:
       # For source, See: https://github.com/docker/build-push-action
       - name: Build and push Docker image
         # Only run if the lock file or Dockerfile has changed which means the container needs re-built
+        if: contains(steps.changed-files.outputs.modified_files, 'renv.lock') || contains(steps.changed-files.outputs.modified_files, 'Docker')
         id: build-and-push
         uses: docker/build-push-action@ac9327eae2b366085ac7f6a2d02df8aa8ead720a
         with:
