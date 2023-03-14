@@ -48,7 +48,7 @@ process FASTP {
         output = "--out1 $out1" + (sample.single? "" : " --out2 $out2")
 
         """
-        fastp $input $output $discard --thread $task.cpus --html $html_report_file --json $json_report_file $args
+        fastp $input $output --thread $task.cpus --html $html_report_file --json $json_report_file $args
 
         mkdir $report_dir
         mkdir $json_dir
