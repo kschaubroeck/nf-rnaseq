@@ -176,26 +176,10 @@ message(paste0(length(samples), "samples located"))
 message("Samples: ", str_flatten(samples, collapse = " "))
 message("Paths: ",   str_flatten(sample_paths, collapse = " "))
 
-# tximeta: import transcript level data ---------------------------
-message("Importing transcript counts...")
-se <- tximeta(samples_table)
-
-# We want to normalize the counts, so we are going to label them as an inferential
-# replicate so fishpond will normalize it. This is temporary and will be removed
-# once the scaling is complete. This value will not affect normalization since
-# each replicate is normalized independently of the others.
-assay(se, "infRep0") <- assay(se, "counts")
-se <- scaleInfReps(se, minCount = min_count, minN = min_n)
-
-assay(se, "scaledTPMCounts") <- assay(se, "infRep0")
-assay(se, "infRep0") <- NULL
-
-# Now compute uncertainty
-se <- computeInfRV(se)
-
 # Save annotation database (sqlite) ---------------------------
 # First assemble the file name using metadata information from tximeta import
 message("Retrieving transcript database...")
+se <- tximeta(samples_table)
 db <- retrieveDb(se)
 txomeInfo <- metadata(se)$txomeInfo
 
@@ -327,11 +311,17 @@ readr::write_tsv(transcript_annotation, "annotation/tsv/transcripts.tsv.gz")
 readr::write_tsv(gene_annotation, "annotation/tsv/genes.tsv.gz")
 
 readr::write_rds(transcript_annotation, "annotation/rds/transcripts.rds", compress = "gz")
-readr::write_rds(transcript_annotation, "annotation/rds/genes.rds", compress = "gz")
+readr::write_rds(gene_annotation, "annotation/rds/genes.rds", compress = "gz")
 
-readr::write_file(annotation_metadata, "tximeta.json")
+readr::write_file(tximeta_info, "tximeta.json")
 readr::write_file(annotation_metadata, "annotation/metadata.json")
 readr::write_file(annotation_source, "annotation/source.json")
+
+# cleanup
+# Save the transcript annotation because it will be needed for later
+rm(cdna, tximeta_info, annotation_metadata, annotation_source, gene_annotation)
+rm(db)
+gc()
 
 # Quantification summary ---------------------------
 message("Importing quantification summary stats...")
@@ -446,15 +436,37 @@ readr::write_csv(lib_format_counts, "library-format.csv.gz")
 readr::write_csv(uniquely_mapping_reads, "unique-mappings.csv.gz")
 readr::write_csv(ambiguously_mapping_reads, "ambiguous-mappings.csv.gz")
 
+# cleanup
+rm(quant_info, lib_format_counts, uniquely_mapping_reads, ambiguously_mapping_reads)
+gc()
+
 # Summarizing counts to gene ---------------------------
 message("Calculating gene counts...")
+
+# Helper function for saving summarized experiments
+save_se_assay <- function(se, assay, .rownames, .file) {
+  readr::write_csv(
+    assay(se, assay) |> as_tibble(rownames = .rownames),
+    file = .file
+  )
+}
+
+# Save the scaled infReps as an RDS file
+save_se_infreps <- function(se, .rownames, .file) {
+  infreps <-
+    assays(se)[str_which(assayNames(se), "^infRep")] |>
+    as.list() |>
+    map(function(rep) as_tibble(rep, rownames = .rownames))
+
+  readr::write_rds(infreps, file = .file, compress = "gz")
+}
 
 # If filtering values aren't set, take the transcript values
 if (is.null(min_count_gene)) min_count_gene <- min_count
 if (is.null(min_n_gene)) min_n_gene <- min_n
 
 # Fetch a new, unfiltered copy
-gse <- summarizeToGene(tximeta(samples_table))
+gse <- summarizeToGene(se)
 
 # Same logic as the transcripts is used for the genes
 assay(gse, "infRep0") <- assay(gse, "counts")
@@ -466,11 +478,24 @@ assay(gse, "infRep0") <- NULL
 # Now compute uncertainty
 gse <- computeInfRV(gse)
 
+message("Saving gene counts...")
+save_se_assay(gse, "counts", .rownames = "gene_id", .file = "gene/raw-counts.csv")
+save_se_assay(gse, "scaledTPMCounts", .rownames = "gene_id", .file = "gene/scaled-counts.csv")
+save_se_assay(gse, "length", .rownames = "gene_id", .file = "gene/effective-lengths.csv.gz")
+save_se_assay(gse, "mean", .rownames = "gene_id", .file = "gene/infreps-mean.csv.gz")
+save_se_assay(gse, "variance", .rownames = "gene_id", .file = "gene/infreps-relative-variance.csv.gz")
+
+save_se_infreps(gse, .rownames = "gene_id", .file = "gene/infreps.rds")
+
+# cleanup
+rm(gse)
+gc()
+
 # Library format summary ---------------------------
 message("Calculating transcript counts for differential transcript usage (DTU)...")
 
-# Fetch a new SE
-se_dtu <- tximeta(samples_table)
+# Fetch a copy of the SE
+se_dtu <- se
 assay(se_dtu, "infRep0") <- assay(se_dtu, "counts")
 
 # Length mean for each transcript
@@ -539,57 +564,48 @@ assay(se_dtu, "infRep0") <- NULL
 # Now compute uncertainty
 se_dtu <- computeInfRV(se_dtu)
 
-# Save all the counts ---------------------------
-message("Saving counts from all experiments...")
+# Save
+message("Saving DTU counts...")
 
-# Helper function for saving summarized experiments
-save_se_assay <- function(se, assay, .rownames, .file) {
-  readr::write_csv(
-    assay(se, assay) |> as_tibble(rownames = .rownames),
-    file = .file
-  )
-}
+save_se_assay(se_dtu, "dtuScaledTPMCounts", .rownames = "transcript_id", .file = "dtu/scaled-counts.csv")
+save_se_assay(se_dtu, "length", .rownames = "transcript_id", .file = "dtu/effective-lengths.csv.gz")
+save_se_assay(se_dtu, "mean", .rownames = "transcript_id", .file = "dtu/infreps-mean.csv.gz")
+save_se_assay(se_dtu, "variance", .rownames = "transcript_id", .file = "dtu/infreps-relative-variance.csv.gz")
+
+save_se_infreps(se_dtu, .rownames = "transcript_id", .file = "dtu/infreps.rds")
+
+# Cleanup
+rm(se_dtu, transcript_annotation)
+gc()
+
+# tximeta: handle transcript level data ---------------------------
+message("Calculating transcript counts...")
+
+# We want to normalize the counts, so we are going to label them as an inferential
+# replicate so fishpond will normalize it. This is temporary and will be removed
+# once the scaling is complete. This value will not affect normalization since
+# each replicate is normalized independently of the others.
+assay(se, "infRep0") <- assay(se, "counts")
+se <- scaleInfReps(se, minCount = min_count, minN = min_n)
+
+assay(se, "scaledTPMCounts") <- assay(se, "infRep0")
+assay(se, "infRep0") <- NULL
+
+# Now compute uncertainty
+se <- computeInfRV(se)
+
+message("Saving transcript counts...")
 
 # Save the raw counts
 save_se_assay(se, "counts", .rownames = "transcript_id", .file = "transcript/raw-counts.csv")
-save_se_assay(gse, "counts", .rownames = "gene_id", .file = "gene/raw-counts.csv")
-
-# Save the original point estimates as csv files
 save_se_assay(se, "scaledTPMCounts", .rownames = "transcript_id", .file = "transcript/scaled-counts.csv")
-save_se_assay(gse, "scaledTPMCounts", .rownames = "gene_id", .file = "gene/scaled-counts.csv")
-save_se_assay(se_dtu, "dtuScaledTPMCounts", .rownames = "transcript_id", .file = "dtu/scaled-counts.csv")
-
-# Length files
 save_se_assay(se, "length", .rownames = "transcript_id", .file = "transcript/effective-lengths.csv.gz")
-save_se_assay(gse, "length", .rownames = "gene_id", .file = "gene/effective-lengths.csv.gz")
-save_se_assay(se_dtu, "length", .rownames = "transcript_id", .file = "dtu/effective-lengths.csv.gz")
-
-# mean estimates
 save_se_assay(se, "mean", .rownames = "transcript_id", .file = "transcript/infreps-mean.csv.gz")
-save_se_assay(gse, "mean", .rownames = "gene_id", .file = "gene/infreps-mean.csv.gz")
-save_se_assay(se_dtu, "mean", .rownames = "transcript_id", .file = "dtu/infreps-mean.csv.gz")
-
-# variance estimates
 save_se_assay(se, "variance", .rownames = "transcript_id", .file = "transcript/infreps-relative-variance.csv.gz")
-save_se_assay(gse, "variance", .rownames = "gene_id", .file = "gene/infreps-relative-variance.csv.gz")
-save_se_assay(se_dtu, "variance", .rownames = "transcript_id", .file = "dtu/infreps-relative-variance.csv.gz")
-
-# Save the scaled infReps as an RDS file
-save_se_infreps <- function(se, .rownames, .file) {
-  infreps <-
-    assays(se)[str_which(assayNames(se), "^infRep")] |>
-    as.list() |>
-    map(function(rep) as_tibble(rep, rownames = .rownames))
-
-  readr::write_rds(infreps, file = .file, compress = "gz")
-}
 
 save_se_infreps(se, .rownames = "transcript_id", .file = "transcript/infreps.rds")
-save_se_infreps(gse, .rownames = "gene_id", .file = "gene/infreps.rds")
-save_se_infreps(se_dtu, .rownames = "transcript_id", .file = "dtu/infreps.rds")
 
 # Finish and citation ---------------------------
 message("Done.")
 citation("tximeta")
-
 sessionInfo()

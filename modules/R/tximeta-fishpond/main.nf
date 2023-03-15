@@ -1,6 +1,6 @@
 process TXIMETA_FISHPOND {
     tag "$samples"
-    label "process_medium_resources"
+    label "process_high_resources"
     label "tool_tximeta_fishpond"
 
     input:
